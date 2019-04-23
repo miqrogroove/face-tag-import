@@ -1,7 +1,7 @@
 # Face Tag Import Script
-This is a barely-working utility that can extract photo tags from a Family Tree
+This is a barebone utility that can extract photo tags from a Family Tree
 Builder v7 GEDCOM file and add them to the database created by
-Photo Note With Image Map for webtrees v2.2.1.
+[Photo Note With Image Map for webtrees v2.2.1](https://github.com/UksusoFF/webtrees-faces/releases/tag/v2.2.1).
 
 ## Usage
 1. Place this script in the webtrees root directory.

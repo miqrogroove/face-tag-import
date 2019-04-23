@@ -147,38 +147,45 @@ foreach ( $root_records as $record ) {
 
 unset( $root_records, $record, $obje_records, $obje );
 
-
-// For each _PHOTO_RIN:
-
-$db_queue = array();
 $photo_count = count( $face_tags );
-$empty_counter = 0;
+echo "Found $tag_count face tags in $photo_count photos.<br>";
+
+
+// Extract all _PHOTO_RIN values from webtrees gedcom values.
+// This will allow each FTB face tag to be associated with a webtrees media
+// object using a simple array.
+
+// mysql> SELECT `m_id` FROM `wt_media` WHERE `m_gedcom` LIKE '%\n1 \\_PHOTO\\_RIN MH:P44\n%';
+// $sql = "SELECT `m_id` FROM `wt_media` WHERE `m_gedcom` LIKE '%\\n1 \\\\_PHOTO\\\\_RIN MH:P44\\n%'";
+
+$id_to_rin = array();
 
 $media = Fisharebest\Webtrees\Database::prepare(
 	"SELECT `m_id`, `m_gedcom` " .
 	"FROM `##media` "
 )->fetchAssoc();
 	
-foreach ( $face_tags as $rin => $links ) {
+foreach ( $media as $id => $gedcom ) {
+	$matches = array();
+	if ( 1 === preg_match( '#\\n1 _PHOTO_RIN (MH:P\\d+)\\n#', $gedcom, $matches ) ) {
 
-// Find the database record for this photo.
+		/* Expected $matches like...
+			array(2) {
+			  [0]=>
+			  string(25) "
+			1 _PHOTO_RIN MH:P2390
+			"
+			  [1]=>
+			  string(8) "MH:P2390"
+			}
+		*/
 
-// mysql> SELECT `m_id` FROM `wt_media` WHERE `m_gedcom` LIKE '%\n1 \\_PHOTO\\_RIN MH:P44\n%';
-// $sql = "SELECT `m_id` FROM `wt_media` WHERE `m_gedcom` LIKE '%\\n1 \\\\_PHOTO\\\\_RIN MH:P44\\n%'";
-
-	$media_id = '';
-	foreach ( $media as $id => $gedcom ) {
-		if ( false !== strpos( $gedcom, "\n1 _PHOTO_RIN $rin\n") ) {
-			$media_id = $id;
-			break;
-		}
+		$id_to_rin[$id] = $matches[1];
 	}
-	
-	if ( empty( $media_id ) ) {
-		echo 'The $media_id was not found for RIN ' . $rin . '.<br>';
-		$empty_counter++;
-		continue;
-	}
+}
+
+unset( $media );
+
 
 // END FTB7 extraction.
 
@@ -195,6 +202,25 @@ foreach ( $face_tags as $rin => $links ) {
 +----------+------------------------------------------------------------------------------------------------------+------------+--------------------+
 */
 
+// For each _PHOTO_RIN:
+
+$db_queue = array();
+$empty_counter = 0;
+
+foreach ( $face_tags as $rin => $links ) {
+
+	// Find the database record for this photo.
+
+	$media_id = array_search( $rin, $id_to_rin );
+	
+	if ( false === $media_id ) {
+		echo 'The $media_id was not found for RIN ' . $rin . '.<br>';
+		$empty_counter++;
+		continue;
+	}
+	
+	// Generate the JSON string for this photo.
+
 	$plugin_data = array();
 	foreach ( $links as $id => $coords ) {
 		$plugin_data[] = array( 'pid' => $id, 'coords' => $coords );
@@ -202,9 +228,11 @@ foreach ( $face_tags as $rin => $links ) {
 	$db_queue[$media_id] = json_encode( $plugin_data );
 }
 
-unset( $face_tags, $media );
+unset( $face_tags );
 
 echo '$db_queue array contains ' . count( $db_queue ) . ' entries.<br>';
+
+// For each photo, convert the JSON string to a SQL string.
 
 $values = array();
 foreach ( $db_queue as $media_id => $plugin_data ) {
@@ -213,7 +241,7 @@ foreach ( $db_queue as $media_id => $plugin_data ) {
 
 unset( $db_queue );
 
-echo '$values array contains ' . count( $values ) . ' entries.<br>';
+// Now build the INSERT statement and use it to add all face tag records to the database.
 
 $values = implode( ',', $values );
 
@@ -232,7 +260,7 @@ unset( $values );
 // END WT import.
 
 
-echo "Found $root_count root records containing $indi_count total individuals in the tree.  Then found $tag_count face tags in $photo_count photos.";
+echo "Done.<br>";
 
 return;
 ?>
