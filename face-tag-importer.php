@@ -228,7 +228,7 @@ foreach ( $face_tags as $rin => $links ) {
 	$db_queue[$media_id] = json_encode( $plugin_data );
 }
 
-unset( $face_tags );
+unset( $face_tags, $id_to_rin );
 
 echo '$db_queue array contains ' . count( $db_queue ) . ' entries.<br>';
 
@@ -260,7 +260,7 @@ unset( $values );
 // END WT import.
 
 
-echo "Done.<br>";
+echo 'Done.<br><a href="../">Return Home</a>';
 
 return;
 ?>
