@@ -3,7 +3,7 @@
  * Face Tag Import Script
  *
  * @author: Robert Chapin
- * @copyright 2019 by Robert Chapin
+ * @copyright 2020 by Robert Chapin
  * @license GPL
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,11 +21,24 @@
  */
 
 define( 'IMPORT_FILE_PATH', 'tree.ged' );
-define( 'WT_SCRIPT_NAME', 'face-tag-importer.php' );
-require './includes/session.php';
+define( 'CONFIG_FILE_PATH', 'data/config.ini.php' );
 
-if ( ! Fisharebest\Webtrees\Auth::isAdmin() ) {
-	exit ('You must be logged in as an admin to use this page.');
+if ( ! is_readable( CONFIG_FILE_PATH ) ) {
+	exit ('Unable to read file ' . CONFIG_FILE_PATH);
+}
+
+$config_file = file_get_contents( CONFIG_FILE_PATH );
+$config = array();
+$matches = array();
+preg_match_all("#\n([a-z]{6})=\"([^\"]++)\"#", $config_file, $matches, PREG_SET_ORDER);
+foreach( $matches as $match ) {
+	$config[$match[1]] = $match[2];
+}
+unset($matches, $match, $config_file);
+$pre = $config['tblpfx'];
+
+if ( 'mysql' !== $config['dbtype'] ) {
+	exit ('Unable to find MySQL config for webtrees.');
 }
 
 if ( ! is_readable( IMPORT_FILE_PATH ) ) {
@@ -160,12 +173,21 @@ echo "Found $tag_count face tags in $photo_count photos.<br>";
 
 $id_to_rin = array();
 
-$media = Fisharebest\Webtrees\Database::prepare(
-	"SELECT `m_id`, `m_gedcom` " .
-	"FROM `##media` "
-)->fetchAssoc();
-	
-foreach ( $media as $id => $gedcom ) {
+$db = new mysqli( $config['dbhost'], $config['dbuser'], $config['dbpass'], $config['dbname'], $config['dbport'] );
+
+if ( $db->connect_error ) {
+	exit ( "Database error: " . $db->connect_error );
+}
+
+$media = $db->query( "SELECT `m_id`, `m_gedcom` FROM `{$pre}media` " );
+
+if ( false === $media ) {
+	exit ( "Database error: " . $db->error );
+}
+
+while( $row = $media->fetch_row() ) {
+	$id = $row[0];
+	$gedcom = $row[1];
 	$matches = array();
 	if ( 1 === preg_match( '#\\n1 _PHOTO_RIN (MH:P\\d+)\\n#', $gedcom, $matches ) ) {
 
@@ -184,7 +206,7 @@ foreach ( $media as $id => $gedcom ) {
 	}
 }
 
-unset( $media );
+$media->free();
 
 
 // END FTB7 extraction.
@@ -194,12 +216,12 @@ unset( $media );
 
 // INSERT the _POSITION record(s) for this photo.
 
-/* mysql> SELECT * FROM wt_photo_notes;
-+----------+------------------------------------------------------------------------------------------------------+------------+--------------------+
-| pnwim_id | pnwim_coordinates                                                                                    | pnwim_m_id | pnwim_m_filename   |
-+----------+------------------------------------------------------------------------------------------------------+------------+--------------------+
-|        1 | [{"pid":"I1","coords":["308","178","473","395"]},{"pid":"I3164","coords":["191","213","354","428"]}] | M74641     | P2015_699_1048.jpg |
-+----------+------------------------------------------------------------------------------------------------------+------------+--------------------+
+/* mysql> SELECT * FROM wt_media_faces;
++------+------------------------------------------------------------------------------------------------------+--------+--------------------+
+| f_id | f_coordinates                                                                                        | f_m_id | f_m_filename       |
++------+------------------------------------------------------------------------------------------------------+--------+--------------------+
+|    1 | [{"pid":"I1","coords":["308","178","473","395"]},{"pid":"I3164","coords":["191","213","354","428"]}] | X74641 | P2015_699_1048.jpg |
++------+------------------------------------------------------------------------------------------------------+--------+--------------------+
 */
 
 // For each _PHOTO_RIN:
@@ -236,7 +258,7 @@ echo '$db_queue array contains ' . count( $db_queue ) . ' entries.<br>';
 
 $values = array();
 foreach ( $db_queue as $media_id => $plugin_data ) {
-	$values[] = '(' . Fisharebest\Webtrees\Database::quote( $media_id ) . ', ' . Fisharebest\Webtrees\Database::quote( $plugin_data ) . ', "")';
+	$values[] = '("' . $db->escape_string( $media_id ) . '", "' . $db->escape_string( $plugin_data ) . '", "")';
 }
 
 unset( $db_queue );
@@ -247,13 +269,17 @@ $values = implode( ',', $values );
 
 echo 'Query size is ' . strlen( $values ) . '.<br>';
 
-Fisharebest\Webtrees\Database::prepare(
-	"TRUNCATE ##photo_notes"
-)->execute();
-Fisharebest\Webtrees\Database::prepare(
-	"INSERT INTO ##photo_notes (pnwim_m_id, pnwim_coordinates, pnwim_m_filename) " .
-	"VALUES " . $values . " "
-)->execute();
+$result = $db->query( "TRUNCATE `{$pre}media_faces`" );
+
+if ( false === $result ) {
+	exit ( "Database error: " . $db->error );
+}
+
+$result = $db->query( "INSERT INTO {$pre}media_faces (f_m_id, f_coordinates, f_m_filename) VALUES $values" );
+
+if ( false === $result ) {
+	exit ( "Database error: " . $db->error );
+}
 
 unset( $values );
 
