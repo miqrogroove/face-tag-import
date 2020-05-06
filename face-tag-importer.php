@@ -35,11 +35,15 @@ foreach( $matches as $match ) {
 	$config[$match[1]] = $match[2];
 }
 unset($matches, $match, $config_file);
-$pre = $config['tblpfx'];
 
-if ( 'mysql' !== $config['dbtype'] ) {
+if ( empty( $config['dbtype'] ) ) {
+	// Older versions did not have a dbtype entry and this is still valid in webtrees 2.0.
+	$config['dbtype'] = 'mysql';
+} elseif ( 'mysql' !== $config['dbtype'] ) {
 	exit ('Unable to find MySQL config for webtrees.');
 }
+
+$pre = $config['tblpfx'];
 
 if ( ! is_readable( IMPORT_FILE_PATH ) ) {
 	exit ('Unable to read file ' . IMPORT_FILE_PATH);
